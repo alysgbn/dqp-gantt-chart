@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DQ Pulse Development — Gantt Chart</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;padding:20px}
+.header{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.header h1{font-size:18px;font-weight:600;color:#f1f5f9;letter-spacing:-.3px}
+.subtitle{font-size:12px;color:#64748b;background:#1e2535;padding:3px 10px;border-radius:20px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.toolbar select,.toolbar input{background:#1e2535;border:1px solid #2d3748;color:#e2e8f0;font-size:12px;padding:5px 10px;border-radius:8px;height:34px;outline:none}
+.toolbar select:focus,.toolbar input:focus{border-color:#4f8ef7}
+.btn{background:#1e2535;border:1px solid #2d3748;color:#e2e8f0;font-size:12px;padding:5px 12px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s}
+.btn:hover{background:#2d3748;border-color:#4f8ef7}
+.btn.primary{background:#1a3a6b;border-color:#4f8ef7;color:#93c5fd}
+.btn.primary:hover{background:#1e4480}
+.gantt-outer{background:#131720;border:1px solid #1e2535;border-radius:14px;overflow:hidden}
+.gantt-scroll{overflow-x:auto;scrollbar-width:none}
+.gantt-scroll::-webkit-scrollbar{display:none}
+.gantt-inner{min-width:960px}
+.grid-header{display:grid;grid-template-columns:230px 110px 1fr;border-bottom:1px solid #1e2535}
+.gh{font-size:11px;font-weight:600;color:#475569;letter-spacing:.06em;text-transform:uppercase;padding:8px 8px}
+.date-header{display:flex;flex-direction:column}
+.month-strip{display:flex;border-left:1px solid #1e2535}
+.month-block{text-align:center;font-size:10px;font-weight:700;color:#475569;letter-spacing:.05em;border-right:1px solid #2d3748;padding:3px 2px;overflow:hidden;white-space:nowrap}
+.day-strip{display:flex;border-left:1px solid #1e2535}
+.day-cell{flex:none;font-size:9px;text-align:center;border-right:1px solid #1e2535;padding:2px 0;line-height:1.4;overflow:hidden}
+.day-cell.weekend{background:#181f2e;color:#334155}
+.day-cell.today-col{background:#1a3a2a;color:#34d399;font-weight:700}
+.day-cell.weekday{color:#475569}
+.phase-header{padding:5px 10px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #1e2535;display:flex;align-items:center;gap:6px}
+.ph-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.task-row{display:grid;grid-template-columns:230px 110px 1fr;align-items:center;border-bottom:1px solid #151b27;transition:background .12s;cursor:pointer}
+.task-row:hover{background:#1a2030}
+.t-name{padding:7px 8px;display:flex;align-items:center;gap:6px}
+.t-name span{font-size:12px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.priority-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.assignee-cell{padding:4px 6px;display:flex;align-items:center}
+.av-stack{display:flex;align-items:center}
+.av-stack .av{margin-left:-6px;border:2px solid #131720}
+.av-stack .av:first-child{margin-left:0}
+.av{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;flex-shrink:0}
+.av-more{width:22px;height:22px;border-radius:50%;background:#2d3748;color:#94a3b8;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-left:-6px;border:2px solid #131720;flex-shrink:0}
+.bar-cell{position:relative;height:36px}
+.bar-track{position:absolute;inset:0;display:flex;align-items:center}
+.today-line{position:absolute;top:0;bottom:0;width:2px;background:#34d399;opacity:.7;z-index:3;pointer-events:none}
+.today-line::after{content:'TODAY';position:absolute;top:2px;left:3px;font-size:7px;color:#34d399;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+.wknd-shade{position:absolute;top:0;bottom:0;pointer-events:none;z-index:0}
+.day-guide{position:absolute;top:0;bottom:0;width:1px;background:#1a2030;pointer-events:none;z-index:0}
+.bar{position:absolute;height:18px;border-radius:5px;cursor:pointer;display:flex;align-items:center;padding:0 6px;overflow:hidden;white-space:nowrap;transition:filter .15s,transform .1s;z-index:2}
+.bar:hover{filter:brightness(1.2);transform:scaleY(1.1)}
+.bar-fill{position:absolute;top:0;left:0;height:100%;opacity:.4;border-radius:5px;pointer-events:none}
+.bar-label{position:relative;z-index:1;font-size:9px;font-weight:600;color:rgba(255,255,255,.9)}
+.edit-panel{background:#131720;border-top:1px solid #1e2535;padding:16px;display:none}
+.edit-panel.open{display:block}
+.ep-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.ep-heading span{font-size:13px;font-weight:600;color:#e2e8f0}
+.ep-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px}
+.ep-field{display:flex;flex-direction:column;gap:4px}
+.ep-field label{font-size:11px;color:#64748b;font-weight:500}
+.ep-field input,.ep-field select{background:#1e2535;border:1px solid #2d3748;color:#e2e8f0;font-size:12px;padding:5px 8px;height:32px;border-radius:7px;outline:none}
+.ep-field input[type=date]{color-scheme:dark}
+.ep-field input:focus,.ep-field select:focus{border-color:#4f8ef7}
+.ep-actions{display:flex;gap:8px;margin-top:12px}
+.btn-save{background:#1a3a6b;border:1px solid #4f8ef7;color:#93c5fd}
+.btn-save:hover{background:#1e4480}
+.btn-del{border-color:#7f1d1d;color:#fca5a5}
+.btn-del:hover{background:#2d1515}
+.legend{display:flex;flex-wrap:wrap;gap:12px;padding:10px 12px;border-top:1px solid #1e2535;background:#0f1117}
+.leg{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b}
+.leg-sq{width:10px;height:10px;border-radius:3px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
+.stat-card{background:#131720;border:1px solid #1e2535;border-radius:10px;padding:10px 12px}
+.stat-label{font-size:10px;color:#475569;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.stat-val{font-size:22px;font-weight:700;margin-top:2px}
+.assignee-picker{display:flex;flex-direction:column;gap:6px}
+.picker-selected{display:flex;flex-wrap:wrap;gap:5px;min-height:32px;background:#1e2535;border:1px solid #2d3748;border-radius:7px;padding:5px 8px;cursor:pointer}
+.pick-pill{display:flex;align-items:center;gap:4px;border-radius:20px;padding:2px 8px 2px 4px;font-size:11px;font-weight:600}
+.pick-pill .rm{cursor:pointer;opacity:.7;font-size:13px;line-height:1;margin-left:1px}
+.pick-pill .rm:hover{opacity:1}
+.pick-placeholder{font-size:12px;color:#475569;line-height:22px}
+.picker-dropdown{background:#1e2535;border:1px solid #4f8ef7;border-radius:8px;padding:4px;display:flex;flex-direction:column;gap:2px;margin-top:2px}
+.picker-opt{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;cursor:pointer;transition:background .1s}
+.picker-opt:hover{background:#2d3748}
+.picker-opt.selected{background:#1a3a6b}
+.picker-opt .av{width:24px;height:24px;font-size:9px}
+.picker-opt-info{display:flex;flex-direction:column}
+.picker-opt-name{font-size:12px;color:#e2e8f0}
+.picker-opt-role{font-size:10px;color:#64748b}
+.picker-opt .check{margin-left:auto;color:#60a5fa;font-size:13px;opacity:0}
+.picker-opt.selected .check{opacity:1}
+.sub-header{padding:3px 10px 3px 22px;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#334155;border-bottom:1px solid #151b27;background:#0f131a}
+.sub-header--enhance{color:#7c5fcf}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal-box{background:#131720;border:1px solid #2d3748;border-radius:16px;padding:22px;width:90%;max-width:700px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.7)}
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>DQ Pulse Development</h1>
+  <span class="subtitle" id="dateRangeLabel">Sprint Plan</span>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="toolbar">
+  <select id="filterPhase" onchange="render()">
+    <option value="">All phases</option>
+    <option>Discovery</option><option value="DataArch">Data Architecture</option><option>Frontend</option><option>Backend</option><option>Integration</option><option>QA</option><option>Launch</option>
+  </select>
+  <select id="filterAssignee" onchange="render()">
+    <option value="">All assignees</option>
+  </select>
+  <div style="flex:1"></div>
+  <button class="btn primary" onclick="openNew()">+ Add task</button>
+</div>
+
+<div class="gantt-outer">
+  <div class="gantt-scroll">
+    <div class="gantt-inner">
+      <div class="grid-header">
+        <div class="gh">Task</div>
+        <div class="gh">Team</div>
+        <div class="gh" style="padding:0"><div class="date-header" id="dateHeader"></div></div>
+      </div>
+      <div id="rows"></div>
+    </div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="handleOverlayClick(event)">
+  <div class="modal-box" id="editPanel">
+    <div class="ep-heading">
+      <span id="epTitle">Edit task</span>
+      <button class="btn" onclick="closeEdit()" style="padding:2px 8px">✕</button>
+    </div>
+    <div class="ep-grid">
+      <div class="ep-field" style="grid-column:span 2">
+        <label>Task name</label>
+        <input id="epName" type="text" placeholder="Task name...">
+      </div>
+      <div class="ep-field">
+        <label>Phase</label>
+        <select id="epPhase">
+          <option>Discovery</option><option value="DataArch">Data Architecture</option><option>Frontend</option><option>Backend</option><option>Integration</option><option>QA</option><option>Launch</option>
+        </select>
+      </div>
+      <div class="ep-field" style="grid-column:span 2">
+        <label>Assignees <span style="color:#475569;font-weight:400">(select multiple)</span></label>
+        <div class="assignee-picker" id="assigneePicker">
+          <div class="picker-selected" id="pickerSelected" onclick="toggleDropdown()">
+            <span class="pick-placeholder" id="pickerPlaceholder">Click to assign team members…</span>
+          </div>
+          <div class="picker-dropdown" id="pickerDropdown" style="display:none"></div>
+        </div>
+      </div>
+      <div class="ep-field">
+        <label>Priority</label>
+        <select id="epPriority"><option>High</option><option>Medium</option><option>Low</option></select>
+      </div>
+      <div class="ep-field">
+        <label>Start date</label>
+        <input id="epStart" type="date">
+      </div>
+      <div class="ep-field">
+        <label>End date</label>
+        <input id="epEnd" type="date">
+      </div>
+      <div class="ep-field">
+        <label>Progress %</label>
+        <input id="epProg" type="number" min="0" max="100" step="5">
+      </div>
+    </div>
+    <div class="ep-actions">
+      <button class="btn btn-save" onclick="saveEdit()">Save</button>
+      <button class="btn btn-del" id="delBtn" onclick="deleteTask()">Delete</button>
+      <button class="btn" onclick="closeEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Calendar helpers ──────────────────────────────────────────
+const START_DATE = new Date(2026, 4, 25); // May 25 2026
+const TOTAL_DAYS = 19; // May 25 – June 12 2026
+
+function addDays(d, n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function dayIndex(dateStr){
+  const d=new Date(dateStr);
+  const diff=Math.round((d - START_DATE)/(1000*60*60*24));
+  return diff;
+}
+function toDateStr(d){
+  return d.toISOString().slice(0,10);
+}
+function fmtShort(d){
+  return (d.getMonth()+1)+'/'+(d.getDate());
+}
+const DAY_NAMES=['Su','Mo','Tu','We','Th','Fr','Sa'];
+const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function isWeekend(d){ const dw=d.getDay(); return dw===0||dw===6; }
+
+// Today offset
+const TODAY_DATE = new Date(2026,5,1); // June 1 2026
+const TODAY_OFFSET = Math.round((TODAY_DATE - START_DATE)/(1000*60*60*24));
+
+// ── People & phases ───────────────────────────────────────────
+const PEOPLE = [
+  {id:'ALI',name:'Aliyah', role:'BE', color:'#f472b6',bg:'#4a1942'},
+  {id:'ALY',name:'Alyssa', role:'FE', color:'#34d399',bg:'#064e3b'},
+  {id:'AJ', name:'AJ',     role:'FS', color:'#60a5fa',bg:'#1e3a5f'},
+];
+const PHASES={
+  Discovery:   {color:'#818cf8',text:'#c7d2fe'},
+  DataArch:    {color:'#2dd4bf',text:'#99f6e4'},
+  Frontend:    {color:'#38bdf8',text:'#bae6fd'},
+  Backend:     {color:'#f59e0b',text:'#fcd34d'},
+  Integration: {color:'#ec4899',text:'#fbcfe8'},
+  QA:          {color:'#4ade80',text:'#bbf7d0'},
+  Launch:      {color:'#f97316',text:'#fed7aa'},
+};
+const PRIO_COLORS={High:'#ef4444',Medium:'#f59e0b',Low:'#6b7280'};
+
+// ── Task data (start/end as date strings) ─────────────────────
+let tasks = [
+  // Discovery
+  {id:1, name:'Project scoping & requirements',   phase:'Discovery', group:'Discovery', assignees:['ALI','ALY','AJ'],  start:'2026-05-25',end:'2026-05-27', prog:100,priority:'High'},
+  {id:2, name:'Technical architecture',           phase:'Discovery', group:'Discovery', assignees:['ALI','ALY','AJ'],  start:'2026-05-26',end:'2026-05-28', prog:100,priority:'High'},
+  // Data Architecture
+  {id:11,name:'Database schema design',           phase:'DataArch',  group:'DataArch',  assignees:['ALI','ALY','AJ'],  start:'2026-05-27',end:'2026-05-29', prog:90, priority:'High'},
+  {id:23,name:'Users & roles tables',             phase:'DataArch',  group:'DataArch',  assignees:['ALI','ALY','AJ'],  start:'2026-05-29',end:'2026-06-01', prog:80, priority:'High'},
+  {id:24,name:'Core domain tables',               phase:'DataArch',  group:'DataArch',  assignees:['ALI','ALY','AJ'],  start:'2026-05-29',end:'2026-06-03', prog:70, priority:'High'},
+  {id:25,name:'Audit & logs tables',              phase:'DataArch',  group:'DataArch',  assignees:['ALI','ALY','AJ'],  start:'2026-06-01',end:'2026-06-04', prog:40, priority:'Medium'},
+  {id:26,name:'Migrations & seed data',           phase:'DataArch',  group:'DataArch',  assignees:['ALI','ALY','AJ'],  start:'2026-06-03',end:'2026-06-06', prog:20, priority:'High'},
+  // Frontend — Core
+  {id:3, name:'Component library setup',          phase:'Frontend',  group:'Frontend',  assignees:['ALI','ALY','AJ'],  start:'2026-05-27',end:'2026-06-02', prog:60, priority:'High'},
+  {id:4, name:'Auth & routing (FE)',              phase:'Frontend',  group:'Frontend',  assignees:['ALI','ALY','AJ'],  start:'2026-06-01',end:'2026-06-05', prog:40, priority:'High'},
+  {id:5, name:'Dashboard & core pages',           phase:'Frontend',  group:'Frontend',  assignees:['ALI','ALY','AJ'],  start:'2026-06-01',end:'2026-06-08', prog:30, priority:'High'},
+  {id:6, name:'Responsive layouts',               phase:'Frontend',  group:'Frontend',  assignees:['ALI','ALY','AJ'],  start:'2026-06-05',end:'2026-06-10', prog:10, priority:'Medium'},
+  // Frontend — Enhancements
+  {id:7, name:'Dark mode & theming',              phase:'Frontend',  group:'Enhancement',assignees:['ALI','ALY','AJ'], start:'2026-06-08',end:'2026-06-10', prog:0,  priority:'Medium'},
+  {id:8, name:'Animations & micro-interactions',  phase:'Frontend',  group:'Enhancement',assignees:['ALI','ALY','AJ'], start:'2026-06-09',end:'2026-06-11', prog:0,  priority:'Low'},
+  {id:9, name:'Accessibility (a11y) pass',        phase:'Frontend',  group:'Enhancement',assignees:['ALI','ALY','AJ'], start:'2026-06-10',end:'2026-06-12', prog:0,  priority:'Medium'},
+  {id:10,name:'Performance & bundle optimisation',phase:'Frontend',  group:'Enhancement',assignees:['ALI','ALY','AJ'], start:'2026-06-10',end:'2026-06-12', prog:0,  priority:'Medium'},
+  // Backend
+  {id:12,name:'REST API development',             phase:'Backend',   group:'Backend',   assignees:['ALI','ALY','AJ'],  start:'2026-06-01',end:'2026-06-08', prog:50, priority:'High'},
+  {id:13,name:'Auth & sessions (BE)',             phase:'Backend',   group:'Backend',   assignees:['ALI','ALY','AJ'],  start:'2026-05-29',end:'2026-06-03', prog:60, priority:'High'},
+  {id:14,name:'Third-party integrations',         phase:'Backend',   group:'Backend',   assignees:['ALI','ALY','AJ'],  start:'2026-06-05',end:'2026-06-10', prog:10, priority:'Medium'},
+  // Integration
+  {id:15,name:'API ↔ Frontend wiring',            phase:'Integration',group:'Integration',assignees:['ALI','ALY','AJ'],start:'2026-06-08',end:'2026-06-11', prog:0,  priority:'High'},
+  {id:16,name:'E2E data flow testing',            phase:'Integration',group:'Integration',assignees:['ALI','ALY','AJ'],start:'2026-06-10',end:'2026-06-12', prog:0,  priority:'High'},
+  // QA
+  {id:17,name:'Unit & integration tests',         phase:'QA',        group:'QA',        assignees:['ALI','ALY','AJ'],  start:'2026-06-08',end:'2026-06-11', prog:0,  priority:'High'},
+  {id:18,name:'Performance & load testing',       phase:'QA',        group:'QA',        assignees:['ALI','ALY','AJ'],  start:'2026-06-10',end:'2026-06-12', prog:0,  priority:'Medium'},
+  {id:19,name:'Bug fix sprint',                   phase:'QA',        group:'QA',        assignees:['ALI','ALY','AJ'],  start:'2026-06-11',end:'2026-06-12', prog:0,  priority:'Medium'},
+  // Launch
+  {id:20,name:'Staging deploy & UAT',             phase:'Launch',    group:'Launch',    assignees:['ALI','ALY','AJ'],  start:'2026-06-11',end:'2026-06-12', prog:0,  priority:'High'},
+  {id:21,name:'Production deploy',                phase:'Launch',    group:'Launch',    assignees:['ALI','ALY','AJ'],  start:'2026-06-12',end:'2026-06-12', prog:0,  priority:'High'},
+  {id:22,name:'Post-launch monitoring',           phase:'Launch',    group:'Launch',    assignees:['ALI','ALY','AJ'],  start:'2026-06-12',end:'2026-06-12', prog:0,  priority:'Medium'},
+];
+let nextId=27, editingId=null, pickerSelected=[], dropdownOpen=false;
+
+function getPerson(id){return PEOPLE.find(p=>p.id===id)||{id:'?',name:'Unassigned',color:'#888',bg:'#333',role:'?'};}
+
+function avatarStack(assignees){
+  const show=assignees.slice(0,3), extra=assignees.length-3;
+  let h='<div class="av-stack">';
+  show.forEach(id=>{const p=getPerson(id);h+=`<div class="av" style="background:${p.bg};color:${p.color}" title="${p.name} (${p.role})">${p.id}</div>`;});
+  if(extra>0)h+=`<div class="av-more" title="${assignees.slice(3).map(id=>getPerson(id).name).join(', ')}">+${extra}</div>`;
+  return h+'</div>';
+}
+
+// ── Build day array ───────────────────────────────────────────
+function buildDays(){
+  const days=[];
+  for(let i=0;i<TOTAL_DAYS;i++){
+    const d=addDays(START_DATE,i);
+    days.push({date:d, isWeekend:isWeekend(d), isToday:i===TODAY_OFFSET});
+  }
+  return days;
+}
+
+// ── Render ────────────────────────────────────────────────────
+function render(){
+  const days=buildDays();
+  const TASK_COL=230, TEAM_COL=110;
+  const containerW = document.querySelector('.gantt-outer').clientWidth || 960;
+  const barAreaW = Math.max(containerW - TASK_COL - TEAM_COL, TOTAL_DAYS * 32);
+  const DAY_W = Math.floor(barAreaW / TOTAL_DAYS);
+
+  // subtitle
+  const endD=addDays(START_DATE,TOTAL_DAYS-1);
+  document.getElementById('dateRangeLabel').textContent=
+    `${fmtShort(START_DATE)} – ${fmtShort(endD)}, 2026 · ${TOTAL_DAYS} days`;
+
+  // ── Date header ───────────────────────────────────────────
+  // Month strip
+  let monthGroups=[], cur=null;
+  days.forEach((d,i)=>{
+    const mk=d.date.getFullYear()+'-'+d.date.getMonth();
+    if(mk!==cur){monthGroups.push({label:MONTH_NAMES[d.date.getMonth()]+' '+d.date.getFullYear(),count:0});cur=mk;}
+    monthGroups[monthGroups.length-1].count++;
+  });
+  const monthHtml=monthGroups.map(m=>`<div class="month-block" style="width:${m.count*DAY_W}px;flex:none">${m.label}</div>`).join('');
+
+  // Day strip
+  const dayHtml=days.map(d=>{
+    const cls=d.isToday?'today-col':d.isWeekend?'weekend':'weekday';
+    const dayName=DAY_NAMES[d.date.getDay()];
+    const lbl=d.isWeekend?`<span style="opacity:.4">${d.date.getDate()}</span>`:`<strong>${d.date.getDate()}</strong><br><span style="font-size:8px;opacity:.6">${dayName}</span>`;
+    return `<div class="day-cell ${cls}" style="width:${DAY_W}px;line-height:1.2;padding:2px 0">${lbl}</div>`;
+  }).join('');
+
+  document.getElementById('dateHeader').innerHTML=
+    `<div class="month-strip">${monthHtml}</div><div class="day-strip">${dayHtml}</div>`;
+
+  // ── Stats ─────────────────────────────────────────────────
+  const total=tasks.length, done=tasks.filter(t=>t.prog===100).length,
+        inprog=tasks.filter(t=>t.prog>0&&t.prog<100).length,
+        avg=Math.round(tasks.reduce((a,t)=>a+t.prog,0)/total);
+  document.getElementById('stats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Total Tasks</div><div class="stat-val" style="color:#60a5fa">${total}</div></div>
+    <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-val" style="color:#34d399">${done}</div></div>
+    <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-val" style="color:#fbbf24">${inprog}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Progress</div><div class="stat-val" style="color:#a78bfa">${avg}%</div></div>`;
+
+  // ── Task rows ─────────────────────────────────────────────
+  const fp=document.getElementById('filterPhase').value;
+  const fa=document.getElementById('filterAssignee').value;
+  const filtered=tasks.filter(t=>(!fp||t.phase===fp)&&(!fa||t.assignees.includes(fa)));
+
+  const phaseOrder=['Discovery','DataArch','Frontend','Backend','Integration','QA','Launch'];
+
+  // weekend shade segments
+  let wkndSegs='', guideLines='';
+  days.forEach((d,i)=>{
+    const x=(i/TOTAL_DAYS*100).toFixed(3);
+    const w=(1/TOTAL_DAYS*100).toFixed(3);
+    if(d.isWeekend) wkndSegs+=`<div class="wknd-shade" style="left:${x}%;width:${w}%;background:#0c1018"></div>`;
+    if(!d.isWeekend&&d.date.getDay()===1) guideLines+=`<div class="day-guide" style="left:${x}%"></div>`;
+  });
+
+  const todayPct=(TODAY_OFFSET/TOTAL_DAYS*100).toFixed(3);
+
+  function taskRowHtml(t, indent){
+    const si=dayIndex(t.start), ei=dayIndex(t.end);
+    const clampS=Math.max(0,si), clampE=Math.min(TOTAL_DAYS,ei+1);
+    const left=(clampS/TOTAL_DAYS*100).toFixed(3);
+    const width=((clampE-clampS)/TOTAL_DAYS*100).toFixed(3);
+    const col=PHASES[t.phase].color;
+    const names=t.assignees.map(id=>getPerson(id).name).join(', ');
+    const tooltip=`${t.name}\n${t.start} → ${t.end}\n${t.prog}% done\n${names}`;
+    return `<div class="task-row" onclick="openEdit(${t.id})">
+      <div class="t-name" style="${indent?'padding-left:18px':''}">
+        ${indent?'<span style="color:#334155;font-size:10px;flex-shrink:0;margin-right:2px">↳</span>':''}
+        <div class="priority-dot" style="background:${PRIO_COLORS[t.priority]||'#888'}" title="${t.priority}"></div>
+        <span title="${t.name}">${t.name}</span>
+      </div>
+      <div class="assignee-cell" title="${names}">${avatarStack(t.assignees)}</div>
+      <div class="bar-cell">
+        <div class="bar-track">
+          ${wkndSegs}${guideLines}
+          <div class="today-line" style="left:${todayPct}%"></div>
+          <div class="bar" style="left:${left}%;width:${width}%;background:${col}22;border:1px solid ${col}55" title="${tooltip}">
+            <div class="bar-fill" style="width:${t.prog}%;background:${col}"></div>
+            <span class="bar-label" style="color:${col}">${t.prog}%</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const PHASE_LABELS={DataArch:'Data Architecture'};
+
+  let html='';
+  phaseOrder.forEach(ph=>{
+    const allPhaseTasks=filtered.filter(t=>t.phase===ph);
+    if(!allPhaseTasks.length)return;
+    const pc=PHASES[ph];
+    const label=PHASE_LABELS[ph]||ph;
+
+    if(ph==='Frontend'){
+      html+=`<div class="phase-header" style="color:${pc.text}"><div class="ph-dot" style="background:${pc.color}"></div>Frontend</div>`;
+      const coreTasks=allPhaseTasks.filter(t=>t.group==='Frontend');
+      if(coreTasks.length){
+        html+=`<div class="sub-header">Core</div>`;
+        coreTasks.forEach(t=>{ html+=taskRowHtml(t,true); });
+      }
+      const enhTasks=allPhaseTasks.filter(t=>t.group==='Enhancement');
+      if(enhTasks.length){
+        html+=`<div class="sub-header sub-header--enhance">Enhancements</div>`;
+        enhTasks.forEach(t=>{ html+=taskRowHtml(t,true); });
+      }
+    } else {
+      html+=`<div class="phase-header" style="color:${pc.text}"><div class="ph-dot" style="background:${pc.color}"></div>${label}</div>`;
+      allPhaseTasks.forEach(t=>{ html+=taskRowHtml(t,false); });
+    }
+  });
+  document.getElementById('rows').innerHTML=html;
+
+  // assignee filter
+  const allA=[...new Set(tasks.flatMap(t=>t.assignees))];
+  const sel=document.getElementById('filterAssignee'), cur2=sel.value;
+  sel.innerHTML='<option value="">All assignees</option>'+allA.map(a=>{const p=getPerson(a);return`<option value="${a}"${a===cur2?' selected':''}>${p.name} (${p.role})</option>`;}).join('');
+
+  document.getElementById('legend').innerHTML=Object.entries(PHASES).map(([ph,v])=>
+    `<div class="leg"><div class="leg-sq" style="background:${v.color}"></div>${ph}</div>`
+  ).join('')+`<div class="leg" style="margin-left:auto"><div class="leg-sq" style="background:#34d399;opacity:.7"></div>Today (May 27)</div>
+   <div class="leg"><div class="leg-sq" style="background:#0c1018;border:1px solid #1e2535"></div>Weekend</div>`;
+}
+
+// ── Picker ────────────────────────────────────────────────────
+function buildDropdown(){
+  document.getElementById('pickerDropdown').innerHTML=PEOPLE.map(p=>`
+    <div class="picker-opt${pickerSelected.includes(p.id)?' selected':''}" onclick="togglePerson('${p.id}')">
+      <div class="av" style="background:${p.bg};color:${p.color}">${p.id}</div>
+      <div class="picker-opt-info"><span class="picker-opt-name">${p.name}</span><span class="picker-opt-role">${p.role}</span></div>
+      <span class="check">✓</span>
+    </div>`).join('');
+}
+function buildPills(){
+  const c=document.getElementById('pickerSelected'), ph=document.getElementById('pickerPlaceholder');
+  c.querySelectorAll('.pick-pill').forEach(e=>e.remove());
+  if(!pickerSelected.length){ph.style.display='';}
+  else{
+    ph.style.display='none';
+    pickerSelected.forEach(id=>{
+      const p=getPerson(id);
+      const pill=document.createElement('div');
+      pill.className='pick-pill';pill.style.background=p.bg;pill.style.color=p.color;
+      pill.innerHTML=`<div class="av" style="background:${p.bg};color:${p.color};border:none;width:16px;height:16px;font-size:7px">${p.id}</div>${p.name}<span class="rm" onclick="event.stopPropagation();removePerson('${p.id}')">×</span>`;
+      c.insertBefore(pill,ph);
+    });
+  }
+}
+function toggleDropdown(){
+  dropdownOpen=!dropdownOpen;
+  const dd=document.getElementById('pickerDropdown');
+  if(dropdownOpen){buildDropdown();dd.style.display='flex';dd.style.flexDirection='column';}
+  else dd.style.display='none';
+}
+function togglePerson(id){
+  pickerSelected=pickerSelected.includes(id)?pickerSelected.filter(x=>x!==id):[...pickerSelected,id];
+  buildPills();buildDropdown();
+}
+function removePerson(id){
+  pickerSelected=pickerSelected.filter(x=>x!==id);
+  buildPills();if(dropdownOpen)buildDropdown();
+}
+document.addEventListener('click',e=>{
+  if(dropdownOpen&&!document.getElementById('assigneePicker').contains(e.target)){
+    dropdownOpen=false;document.getElementById('pickerDropdown').style.display='none';
+  }
+});
+
+// ── Edit ──────────────────────────────────────────────────────
+function openEdit(id){
+  editingId=id;
+  const t=tasks.find(x=>x.id===id);
+  document.getElementById('epTitle').textContent='Edit: '+t.name;
+  document.getElementById('epName').value=t.name;
+  document.getElementById('epPhase').value=t.phase;
+  document.getElementById('epStart').value=t.start;
+  document.getElementById('epEnd').value=t.end;
+  document.getElementById('epProg').value=t.prog;
+  document.getElementById('epPriority').value=t.priority;
+  pickerSelected=[...t.assignees];dropdownOpen=false;
+  document.getElementById('pickerDropdown').style.display='none';
+  buildPills();
+  document.getElementById('delBtn').style.display='';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function openNew(){
+  editingId=null;
+  document.getElementById('epTitle').textContent='New task';
+  document.getElementById('epName').value='';
+  document.getElementById('epPhase').value='Frontend';
+  document.getElementById('epStart').value='2026-05-25';
+  document.getElementById('epEnd').value='2026-06-05';
+  document.getElementById('epProg').value=0;
+  document.getElementById('epPriority').value='Medium';
+  pickerSelected=[];dropdownOpen=false;
+  document.getElementById('pickerDropdown').style.display='none';
+  buildPills();
+  document.getElementById('delBtn').style.display='none';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function saveEdit(){
+  const name=document.getElementById('epName').value.trim();
+  if(!name)return;
+  if(!pickerSelected.length){alert('Please assign at least one team member.');return;}
+  const start=document.getElementById('epStart').value;
+  const end=document.getElementById('epEnd').value;
+  if(end<start){alert('End date must be on or after start date.');return;}
+  const data={name,phase:document.getElementById('epPhase').value,assignees:[...pickerSelected],
+    start,end,prog:Math.min(100,Math.max(0,parseInt(document.getElementById('epProg').value)||0)),
+    priority:document.getElementById('epPriority').value};
+  if(editingId){const i=tasks.findIndex(t=>t.id===editingId);if(i>=0)tasks[i]={...tasks[i],...data};}
+  else tasks.push({id:nextId++,...data});
+  closeEdit();render();
+}
+function deleteTask(){if(editingId)tasks=tasks.filter(t=>t.id!==editingId);closeEdit();render();}
+function closeEdit(){
+  document.getElementById('modalOverlay').classList.remove('open');
+  dropdownOpen=false;
+  document.getElementById('pickerDropdown').style.display='none';
+}
+function handleOverlayClick(e){
+  if(e.target===document.getElementById('modalOverlay')) closeEdit();
+}
+
+render();
+window.addEventListener('resize', render);
+</script>
+</body>
+</html>
